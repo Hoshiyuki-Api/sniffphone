@@ -1,18 +1,11 @@
 from flask import Flask, jsonify, request
-from flask_restx import Api, Resource, fields
 import requests
 import json
 
-# Setup Flask dan Flask-RESTX
+# Setup Flask
 app = Flask(__name__)
-api = Api(app, version='1.0', title='Phone Checker API', description='API for checking phone number registration status')
 
-# Mendefinisikan model untuk request dan response
-phone_model = api.model('PhoneModel', {
-    'phone': fields.String(required=True, description='Phone number to check', example='08123456789')
-})
-
-# URL untuk berbagai layanan
+# URL for various services
 urls = {
     "dana": "https://checker.orderkuota.com/api/checkname/produk/c54990b330/03/1897292/dana",
     "shopeepay": "https://checker.orderkuota.com/api/checkname/produk/c54990b330/03/1897292/shopeepay",
@@ -24,7 +17,7 @@ urls = {
     "mister_aladin": "https://m.misteraladin.com/api/members/v2/auth/login-phone-number-check"
 }
 
-# Mapping aplikasi ke nama
+# Mapping application names
 app_names = {
     "dana": "DANA",
     "shopeepay": "ShopeePay",
@@ -36,7 +29,7 @@ app_names = {
     "mister_aladin": "Mister Aladin"
 }
 
-# Fungsi pengecekan berdasarkan aplikasi
+# Function to check Tokopedia
 def check_tokopedia(phone_number):
     headers_tokopedia = {
         "Host": "gql.tokopedia.com",
@@ -63,7 +56,7 @@ def check_tokopedia(phone_number):
     data_tokopedia = [
         {
             "operationName": "checkAccount",
-            "variables": {"id": phone_number.lstrip("+")},  # Hapus tanda '+' jika ada
+            "variables": {"id": phone_number.lstrip("+")},  # Remove '+' if present
             "query": """mutation checkAccount($id: String!) {
                 registerCheck(id: $id) {
                     isExist
@@ -86,7 +79,7 @@ def check_tokopedia(phone_number):
     else:
         return f"Error Tokopedia: {response.status_code}"
 
-# Fungsi pengecekan untuk Mister Aladin
+# Function to check Mister Aladin
 def check_mister_aladin(phone_number):
     headers_mister_aladin = {
         "Host": "m.misteraladin.com",
@@ -110,7 +103,7 @@ def check_mister_aladin(phone_number):
 
     data_mister_aladin = {
         "phone_number_country_code": "62",
-        "phone_number": phone_number.lstrip("0")  # Hapus '0' di awal nomor jika ada
+        "phone_number": phone_number.lstrip("0")  # Remove '0' if present
     }
 
     response = requests.post(urls['mister_aladin'], headers=headers_mister_aladin, json=data_mister_aladin)
@@ -124,7 +117,7 @@ def check_mister_aladin(phone_number):
     else:
         return f"Error Mister Aladin: {response.status_code}"
 
-# Fungsi pengecekan untuk Rupa Rupa
+# Function to check Rupa Rupa
 def check_ruparupa(phone_number):
     headers_ruparupa = {
         "Host": "wapi.ruparupa.com",
@@ -149,7 +142,7 @@ def check_ruparupa(phone_number):
     }
 
     data_ruparupa = {
-        "user": phone_number.lstrip("0")  # Hapus '0' jika ada
+        "user": phone_number.lstrip("0")  # Remove '0' if present
     }
 
     response = requests.get(urls['ruparupa'], headers=headers_ruparupa, params=data_ruparupa)
@@ -163,66 +156,63 @@ def check_ruparupa(phone_number):
     else:
         return f"Error Rupa Rupa: {response.status_code}"
 
-# Endpoint dengan flask_restx
-@api.route('/sniff')
-class PhoneChecker(Resource):
-    @api.expect(phone_model)
-    def get(self):
-        phone_number = request.args.get('phone')
+# Endpoint for checking phone registration status
+@app.route('/sniff', methods=['GET'])
+def sniff_phone():
+    phone_number = request.args.get('phone')
 
-        if not phone_number:
-            return jsonify({"error": "Phone number is required"}), 400
+    if not phone_number:
+        return jsonify({"error": "Phone number is required"}), 400
 
-        results = []
+    results = []
 
-        # Cek nomor telepon di berbagai layanan
-        tokopedia_result = check_tokopedia(phone_number)
-        results.append({"service": "Tokopedia", "phone": phone_number, "registered": tokopedia_result})
+    # Check phone number in various services
+    tokopedia_result = check_tokopedia(phone_number)
+    results.append({"service": "Tokopedia", "phone": phone_number, "registered": tokopedia_result})
 
-        mister_aladin_result = check_mister_aladin(phone_number)
-        results.append({"service": "Mister Aladin", "phone": phone_number, "registered": mister_aladin_result})
+    mister_aladin_result = check_mister_aladin(phone_number)
+    results.append({"service": "Mister Aladin", "phone": phone_number, "registered": mister_aladin_result})
 
-        ruparupa_result = check_ruparupa(phone_number)
-        results.append({"service": "Rupa Rupa", "phone": phone_number, "registered": ruparupa_result})
+    ruparupa_result = check_ruparupa(phone_number)
+    results.append({"service": "Rupa Rupa", "phone": phone_number, "registered": ruparupa_result})
 
-        # Periksa layanan lainnya
-        for id_name, url in urls.items():
-            if id_name not in ["tokopedia", "mister_aladin", "ruparupa"]:
-                headers = {
-                    "Content-Type": "application/x-www-form-urlencoded",
-                    "Host": "checker.orderkuota.com",
-                    "Connection": "Keep-Alive",
-                    "Accept-Encoding": "gzip",
-                    "User-Agent": "okhttp/4.12.0",
-                }
-                data = {
-                    "phoneNumber": phone_number,
-                    "app_reg_id": "fhdH0F-8Rrmt02q3H31coo:APA91bGs6KaglRvhPVMA9LK3aMs4iDBHnXaGX-MucQZ7-o1s1KMkOgdZA9Qm9zcX19qInYGBu0gmnPVFWG7eRJ-h05qe6e9u-ruCtSQYMhPyHpY5ExLauBp_ejOS-pJQB9EiyL9HeamO",
-                    "phone_android_version": "14",
-                    "app_version_code": "241212",
-                    "phone_uuid": "fhdH0F-8Rrmt02q3H31coo",
-                    "auth_username": "ammarbn",
-                    "customerId": "",
-                    "auth_token": "1897292:TsEZ8fI2JGykpA3SO5dv6j4Wul1CbUPY",
-                    "app_version_name": "24.12.12",
-                    "phone_model": "23021RAA2Y",
-                }
+    # Check other services
+    for id_name, url in urls.items():
+        if id_name not in ["tokopedia", "mister_aladin", "ruparupa"]:
+            headers = {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Host": "checker.orderkuota.com",
+                "Connection": "Keep-Alive",
+                "Accept-Encoding": "gzip",
+                "User-Agent": "okhttp/4.12.0",
+            }
+            data = {
+                "phoneNumber": phone_number,
+                "app_reg_id": "fhdH0F-8Rrmt02q3H31coo:APA91bGs6KaglRvhPVMA9LK3aMs4iDBHnXaGX-MucQZ7-o1s1KMkOgdZA9Qm9zcX19qInYGBu0gmnPVFWG7eRJ-h05qe6e9u-ruCtSQYMhPyHpY5ExLauBp_ejOS-pJQB9EiyL9HeamO",
+                "phone_android_version": "14",
+                "app_version_code": "241212",
+                "phone_uuid": "fhdH0F-8Rrmt02q3H31coo",
+                "auth_username": "ammarbn",
+                "customerId": "",
+                "auth_token": "1897292:TsEZ8fI2JGykpA3SO5dv6j4Wul1CbUPY",
+                "app_version_name": "24.12.12",
+                "phone_model": "23021RAA2Y",
+            }
 
-                response = requests.post(url, headers=headers, data=data)
-                response_text = response.text
-                response_dict = json.loads(response.text)
-                response_true = response_dict["message"]
+            response = requests.post(url, headers=headers, data=data)
+            response_text = response.text
+            response_dict = json.loads(response.text)
+            response_true = response_dict["message"]
 
-                if "TIDAK TERDAFTAR" in response_text:
-                    registered = "NO"
-                else:
-                    registered = f"{response_true} (YES)"
+            if "TIDAK TERDAFTAR" in response_text:
+                registered = "NO"
+            else:
+                registered = f"{response_true} (YES)"
 
-                app_name = app_names.get(id_name, "Unknown App")
-                results.append({"service": app_name, "phone": phone_number, "registered": registered})
+            app_name = app_names.get(id_name, "Unknown App")
+            results.append({"service": app_name, "phone": phone_number, "registered": registered})
 
-        return jsonify(results)
-
+    return jsonify(results)
 
 if __name__ == '__main__':
     app.run(debug=True)
