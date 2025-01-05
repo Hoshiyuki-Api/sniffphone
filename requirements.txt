@@ -61,7 +61,6 @@ pytz==2024.1
 referencing==0.35.1
 requests==2.32.3
 requests-toolbelt==1.0.0
-rpds-py==0.18.1
 rsa==4.9
 selenium==4.24.0
 setuptools==74.0.0
