@@ -3,3 +3,4 @@ Flask-RESTX==0.5.1
 Flask-RESTful==0.3.10
 fake-useragent==1.5.1
 flask-restplus==0.13.0
+requests==2.32.3
